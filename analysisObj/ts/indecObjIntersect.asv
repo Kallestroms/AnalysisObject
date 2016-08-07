@@ -1,0 +1,20 @@
+function    [out1,out2] = indecObjIntersect(in1,in2);
+% intersects two indec data objects and returns the common parts of each
+% funcitons on two ecual lenght structures also
+out1 = in1;
+out2 = in2;
+
+try
+    if isfield(in1(1),'dt')
+        [valid,I,J] = intersect([in1.dt],[in2.dt]);
+    elseif isfield(in1(1),'valid')
+        [valid,I,J] = intersect([in1.valid],[in2.valid]);
+    else
+        trace('missing datetime definition');
+    end
+catch
+    trace('error for indec data object intersection');
+end
+
+
+

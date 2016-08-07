@@ -1,0 +1,12 @@
+function    [valid,I] = indecObjSortOnValid(in1);
+% sort indec object on valid
+% funcitons on two ecual lenght structures also
+out1 = in1;
+try
+    
+catch
+    trace('error for indec data object sort');
+end
+
+
+

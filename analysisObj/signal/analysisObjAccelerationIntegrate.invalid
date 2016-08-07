@@ -1,0 +1,112 @@
+function out = analysisObjAccelerationIntegrate(accObj,TLFC,varargin)
+%  function d=analysisObjAccelerationIntegrate(acc,tc,[check])
+%
+%  works by fft and ifft
+%  returns velocity and postit from accleration
+%
+%  input signal accelerations in analysisObjec : accObj
+%  low period cut off for integrateion         : TLCF
+%
+%  Returns   objOut(1) - integrated velocity
+%            objOut(2) - integrated position
+%
+
+out     = accObj;
+try
+    % set initial data check that it is a multiple of 2 and correct if not
+    tc      = TLFC;
+    acc     = accObj.data.dat;
+    acc     = acc(:);
+    ndat    = length(acc);
+    ldat    = 1:ndat;
+    if mod(ndat,2)
+        acc = [acc(1) acc']';
+        ldat= 2:ldat;
+    end
+
+
+    try
+        fs = accObj.fs;
+    catch
+        trace('FS does not exist using FS = 1')
+    end
+
+    %
+    %
+    % sets frequency axis to fit with sampling frequency
+    fc      = 1../tc;
+    nt      = length(acc);
+    nt2     = nt/2;
+    w1      = 2*pi*(1:nt2)*fs/2/nt2;
+    w       = [0 w1 w1((nt2-1):-1:1)]';
+
+    % find cut-off sample nr
+    n       = fix(2*fc*nt2/fs);
+    %
+    % removes trend before fft
+    %
+    acc     = detrend(acc);
+    afft    = fft(acc);
+    %
+    % plots process
+    %
+    l=(n+2):(nt-n);
+    %
+    %
+    if nargin == 3;
+        fct     =(w(n+2))/(2*pi);
+        plot(w,real(afft));grid;hold on;
+        title('FFT components:red, sustained comp: blue ,removed comp: green')
+        pause(1)
+        plot(w(l),real(afft(l,:)),'b');
+        ll=[(1:n+1) (nt-n:nt)];
+        plot(w(ll),real(afft(ll,:)),'g');
+        H=axis;
+        yp=[10 15]/100*(H(4)-H(3))+H(3);  % positions along Y-axis
+        xp=[ 5  5]/100*(H(2)-H(1))+H(1);  % positions  along X-axis
+        ti=sprintf('Cutoff frequency : %5.4f Hz',fct);text(xp(1),yp(1),ti,'sc');
+        ti=sprintf('Cutoff period    : %5.1f Sec',(1./fct));text(xp(2),yp(2),ti,'sc');
+        hold off;pause;clf
+    end
+    %
+    % Calcs velocity and position
+    %
+    vel     = ifft([(1:n+1)*0 ((real(afft(l))+i*imag(afft(l)))./(-w(l)))'    (1:n)*0]);
+    pos     = ifft([(1:n+1)*0 ((real(afft(l))+i*imag(afft(l)))./(-w(l).^2))' (1:n)*0]);
+    b       =     ([(1:n+1)*0 ((real(afft(l))+i*imag(afft(l)))./(-w(l).^2))' (1:n)*0]);
+    l2      = nt:-1:1;
+    d       = [real(vel(l2))' real(pos(l2))'];
+
+    if nargin == 3
+        %
+        % do and plots checks
+        %
+        plot([acc d])
+        grid;title('Initial signal:red and integrated signals: green and blue')
+        pause;clf;
+        a   = real(ifft(-fft(d(:,2)).*w.^2));
+        b   = [diff(d(:,2),1).*fs [0 diff(d(:,2),2)'*fs^2]'];
+        l3=10:nt-10;
+        plot([acc(l3+1) a(l3) b(l3,2)])
+        grid;title('Initial signal:red, and reproduced signal: green & blue (diffn)')
+        %keyboard
+    end
+    
+    %
+    % set output data
+    %
+    out = out(1);
+    out(1).data.dat = acc(ldat);    
+    out(1).type = 'original acceleration';
+    out(2) = out(1);
+    out(2).data.dat = d(:,1);
+    out(2).type = 'Derived Velocity';
+    out(2).parameter = ['derived Veloctiy from ' accObj(1).parameter ];
+    out(3).data.dat = d(:,2);
+    out(3).type = 'Derived Motion';
+    out(3).parameter = ['derived motion from ' accObj(1).parameter ];
+        
+catch
+    trace('### something went wrong ####');
+end
+

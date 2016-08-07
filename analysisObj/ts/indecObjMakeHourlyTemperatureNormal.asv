@@ -1,0 +1,112 @@
+function [retCode,out] = indecObjmakeHourlyTemperatureNormal(sy);
+% makeHourlyTemperatureNormal    - generates an hourly normal for any 
+% function [retCode,out] = indecObjmakeHourlyTemperatureNormal(sy);
+% input (example) : 
+% db.name = '
+% db.usr  = '
+% db.pwd  = '
+% 
+% indecObj.sy.area        = {'OSLO'};
+% indecObj.sy.areaout     = {'oslo'};
+% indecObj.sy.valid       = datenum(1999,03,01):datenum(2004,06,01)
+% indecObj.sy.param       = {'T2'};
+% indecObj.sy.paramout    = {'temp'};
+% indecObj.sy.interp.do   = {'no'};
+% indecObj.sy.interp.type = {'linear'};
+retCode = 'OK';
+
+% rewamp the data to a continous time series
+ts = indecObjMakeTimeSeries(sy);
+is_NaN = isnan(ts.data.dat);
+ts.data.dat(is_NaN)   = [];
+ts.data.valid(is_NaN) = [];
+indecObjplot(ts)
+
+% filter in low pass and high pass
+tsl = ts;
+[bl al] = butter(5,0.001);  
+tsl.data.dat = filtfilt(bl,al,ts.data.dat);
+tsh = indecObjSubtract(ts,tsl);
+
+% find complete years
+[y,m,d,h] = datevec(ts.data.valid);
+J = max(find(h == 23 & m == m(end)-2));
+I = min(find(m == m(J) & d == d(J) & h == 23) );
+if ~ I > 24*31;
+    I = min(find(y == y(1)+1 & m == m(J) & d == d(J) & h == 23) );
+end    
+l = I+1:J;
+ts.data.valid   = ts.data.valid(l); 
+ts.data.dat     = ts.data.dat(l); 
+tsl.data.valid  = tsl.data.valid(l); 
+tsl.data.dat    = tsl.data.dat(l); 
+tsh.data.valid  = tsh.data.valid(l); 
+tsh.data.dat    = tsh.data.dat(l); 
+[y,m,d,h]       = datevec(ts.data.valid);
+
+% remove blips. 
+outsideRange = abs(tsh.data.dat) > 5*std(tsh.data.dat);
+tsh.data.dat(outsideRange) = [];
+tsh.data.valid(outsideRange) = [];
+dt = tsh.data.valid(1):1/24:tsh.data.valid(end);
+tsh.data.dat = interp1(tsh.data.valid,tsh.data.dat,dt);
+tsh.data.valid = dt;
+
+%generate for each year a matrix of DAYTIME x MONTH
+yr = unique(y);
+
+dayHour = fix(1:1/24:32-1/24)'+repmat((0:23)',31,1)/24;
+tsdayHour = d+h/24;
+nl = length(dayHour);
+nc = 12;
+datDum = ones(nc,nl)*NaN;
+
+for ii = 1:length(yr);
+    lyr = find(y ==yr(ii));
+    normalL.dat(ii,:,:) = datDum;
+    normalL.valid(ii,:,:) = datDum;
+    normalH.dat(ii,:,:) = datDum;
+    normalH.valid(ii,:,:) = datDum;
+    for ic = 1:nc;
+        k = find(m(lyr) == ic);
+        if sum(k)~=0;
+            [c, IA, IB] = intersect(dayHour,tsdayHour(lyr(k)));
+            normalL.dat(ii,ic,IA)   = tsl.data.dat(lyr(k(IB)));
+            normalL.valid(ii,ic,IA) = tsl.data.valid(lyr(k(IB)));
+            normalH.dat(ii,ic,IA)   = tsh.data.dat(lyr(k(IB)));
+            normalH.valid(ii,ic,IA) = tsh.data.valid(lyr(k(IB)));
+        end
+    end
+end
+% make daily variation from HP data
+
+normDataL = rmfield(ts,'data');normDataL.type = 'Low Passed Normal';
+normDataH = rmfield(ts,'data');normDataH.type = 'High Passed Normal';
+for ic = 1:nc
+    normDataL.data.dat1(:,ic) = nanmean(squeeze(normalL.dat(:,ic,:)))';
+    normDataL.data.dat2(:,ic) = nanstd(squeeze(normalL.dat(:,ic,:)))';
+    normDataH.data.dat1(:,ic) = nanmean(squeeze(normalH.dat(:,ic,:)))';
+    normDataH.data.dat2(:,ic) = nanstd(squeeze(normalH.dat(:,ic,:)))';
+end
+[nc nl] = size(normDataL.data.dat1);
+normalLP.mean = reshape(normDataL.data.dat1,nl*nc,1);
+normalLP.std  = reshape(normDataL.data.dat2,nl*nc,1);
+normalHP.mean = reshape(normDataH.data.dat1,nl*nc,1);
+normalHP.std  = reshape(normDataH.data.dat2,nl*nc,1);
+
+is_NaN = isnan(normalLP.mean);
+
+normalLP.mean(is_NaN) = [];
+normalLP.std(is_NaN)  = [];
+normalHP.mean(is_NaN) = [];
+normalHP.std(is_NaN)  = [];
+
+% make a valid time series for use 
+valid  = datenum(2004,01,01,00,00,00):1/24:datenum(2004,12,31,23,00,00);dt = dt';
+
+% plot([normalLP.mean normalLP.mean+normalLP.std normalLP.mean-normalLP.std] )
+% plot([normalHP.mean normalHP.mean+normalHP.std normalHP.mean-normalHP.std] )
+% plot(normalLP.mean+normalHP.mean)
+
+out.LP = normal.LP
+out.HP = normal.HP

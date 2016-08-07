@@ -1,0 +1,86 @@
+    function [out] = analysisObjmakeWeibullFit(in, varargin)
+% function call [out] = analysisObjmakeWeibullFit(in,[use4Hs]);
+% input
+% in        - dataObj with time series as data.dat and data.valid
+% use4Hs    - 1 (defalut) - uses own method to fit for Hs  for fitting 1, 10, 25, 50 and 100 year return periods
+%           - 0 - uses matlab own 2 paremter method to fit a weibull distribution to the data set
+%
+% out - out fitted data and results for different return periods if used
+
+verbose    = 1;
+use4Hs     = 1;
+if nargin == 2;
+    use4Hs = varargin{1};
+end
+
+out = in;
+
+if use4Hs;
+
+    nPrBlk = 5; % nr of samples pr block
+    nFits = length(in);
+
+    for iFit = 1:nFits
+        % set time series and nr of blocks for weibull fitting
+        ts = in(iFit).data.dat;
+        nHist = fix(length(ts)/nPrBlk);
+        % then estimate paramters for statistical fitting
+        tau = round(nanmean(diff(in(iFit).data.valid)*24));
+        [Y bin] = hist(ts,nHist);
+        WBL.cdf = cumsum(Y)./(sum(Y) + 1);
+        WBL.vals = bin;
+        WBL.y   = log(-log(1-WBL.cdf));
+        WBL.x   = log(WBL.vals);
+        WBL.info = sprintf('cdf for %s',in(iFit).location);
+        y = WBL.y(2:end-1);
+        x = WBL.x(2:end-1);
+
+        % then fit to get gamma and Hc
+        s = polyfit(x,y,1);
+        WBL.gamma = s(1);
+        s = polyfit(y,x,1);
+        WBL.Hc = exp(s(2));
+
+        % estimate 1, 10 and 100 year return Periods
+        WBL.HsRp1yr     = WBL.Hc/WBL.gamma*log((1*365*24)/3);
+        WBL.HsRp10yr    = WBL.Hc/WBL.gamma*log((10*365*24)/3);
+        WBL.HsRp25yr    = WBL.Hc/WBL.gamma*log((25*365*24)/3);
+        WBL.HsRp100yr   = WBL.Hc/WBL.gamma*log((100*365*24)/3);
+        WBL.Hs          = (min(ts):0.5:max(ts))';
+        WBL.P           = 1 - exp(-(WBL.Hs/WBL.Hc).^WBL.gamma);
+
+        if verbose;
+
+            figure;
+            plot([WBL.x],[WBL.y],'*');
+            hold on;
+            plot(log(WBL.Hs),log(log(1-WBL.P)),'r');
+            legend({WBL.info},4);
+            hold on;
+            title(sprintf('Weibull 2 parameter plot P(H_s) = 1 - exp-({{H_s}/{H_c}})^g for %s',upper(in(iFit).location)));
+            xlabel('ln(H_s)');ylabel('ln(-ln(1-P(H_s)))');
+            legend({WBL.info},4);
+            grid on;
+        end
+        out(iFit).WBL = WBL;
+    end
+else
+
+    nFits = length(in);
+    for iFit = 1:nFits
+
+        ts = in(iFit).data.dat;
+        [A B] = wblfit(ts);
+        WBL.gamma = A(2);
+        WBL.Hc    = A(1);
+
+        if verbose
+            figure
+            wblplot(ts);
+
+        end
+        out(iFit).WBL = WBL;
+    end
+
+end
+
